@@ -88,7 +88,7 @@
       (throw
         (IllegalArgumentException. "Cannot start server in local mode!"))))
 
-(defmacro defserverfn [name & body]
+(defmacro defserverfn [name & body] ;;xiaokang defn that catch Throwable and exit
   `(let [exec-fn# (fn ~@body)]
     (defn ~name [& args#]
       (try
@@ -186,8 +186,8 @@
 (defn system-topology! [storm-conf ^StormTopology topology]
   (validate-basic! topology)
   (let [ret (.deepCopy topology)]
-    (add-acker! (storm-conf TOPOLOGY-ACKERS) ret)
-    (add-system-streams! ret)
+    (add-acker! (storm-conf TOPOLOGY-ACKERS) ret) ;;xiaokang spout.__ack_init -> acker, bolt.__ack_ack/fail -> acker, acker.__ack_ack/fail -> spout
+    (add-system-streams! ret) ;;xiaokang add __system stream contains "event" filed
     (validate-structure! ret)
     ret
     ))

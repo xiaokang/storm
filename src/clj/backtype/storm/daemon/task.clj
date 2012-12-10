@@ -129,16 +129,16 @@
         component-id (.getThisComponentId topology-context)
         storm-conf (component-conf storm-conf topology-context component-id)
         _ (log-message "Loading task " component-id ":" task-id)
-        task-info (.getTaskToComponent topology-context)
+        task-info (.getTaskToComponent topology-context) ;;xiaokang {taskid -> component-id}
         active (atom true)
-        uptime (uptime-computer)
+        uptime (uptime-computer) ;;xiaokang fn return now - start
         storm-cluster-state (cluster/mk-storm-cluster-state cluster-state)
         
-        task-object (get-task-object (.getRawTopology topology-context)
+        task-object (get-task-object (.getRawTopology topology-context) ;;xiaokang create task-obj
                                      (.getThisComponentId topology-context))
         task-stats (mk-task-stats task-object (sampling-rate storm-conf))
 
-        report-error (fn [error]
+        report-error (fn [error] ;;xiaokang write error to zk, every task has a zk dir which at most 10 error msg children
                        (log-error error)
                        (.report-task-error storm-cluster-state storm-id task-id error))
         
@@ -147,7 +147,7 @@
                                (suicide-fn))
 
         ;; heartbeat ASAP so nimbus doesn't reassign
-        heartbeat-thread (async-loop
+        heartbeat-thread (async-loop ;;xiaokang thread write zk taskbeats ephemeral node [time uptime stat]
                           (fn []
                             (.task-heartbeat! storm-cluster-state storm-id task-id
                                               (TaskHeartbeat. (current-time-secs)
@@ -158,16 +158,16 @@
                           :priority Thread/MAX_PRIORITY
                           :kill-fn report-error-and-die)
 
-        stream->component->grouper (outbound-components topology-context)
-        component->tasks (reverse-map task-info)
+        stream->component->grouper (outbound-components topology-context) ;;xiaokang grouper is a function tuple -> task index
+        component->tasks (reverse-map task-info) ;;xiaokang component-id -> [task1 task2 ...]
         ;; important it binds to virtual port before function returns
-        puller (msg/bind mq-context storm-id task-id)
+        puller (msg/bind mq-context storm-id task-id) ;;xiaokang start msg receiver, port is task-id ? not uniq cross multi storm?
 
         ;; TODO: consider DRYing things up and moving stats        
         task-readable-name (get-readable-name topology-context)
 
         emit-sampler (mk-stats-sampler storm-conf)
-        tasks-fn (fn ([^Integer out-task-id ^String stream ^List values]
+        tasks-fn (fn ([^Integer out-task-id ^String stream ^List values] ;;xiaokang get output task-ids
                         (when (= true (storm-conf TOPOLOGY-DEBUG))
                           (log-message "Emitting direct: " out-task-id "; " task-readable-name " " stream " " values))
                         (let [target-component (.getComponentId topology-context out-task-id)
@@ -186,7 +186,7 @@
                       (when (= true (storm-conf TOPOLOGY-DEBUG))
                         (log-message "Emitting: " task-readable-name " " stream " " values))
                       (let [;; TODO: this doesn't seem to be very fast
-                            ;; and seems to be the current bottleneck
+                            ;; and seems to be the current bottleneck ;;xiaokang why?
                             out-tasks (mapcat
                                        (fn [[out-component grouper]]
                                          (when (= :direct grouper)
@@ -202,7 +202,7 @@
                         out-tasks)))
         _ (send-unanchored topology-context tasks-fn transfer-fn SYSTEM-STREAM-ID ["startup"])
         executor-threads (dofor
-                          [exec (with-error-reaction report-error-and-die
+                          [exec (with-error-reaction report-error-and-die ;;xiaokang report-error-and-die on throwable
                                   (mk-executors task-object storm-conf puller tasks-fn
                                                 transfer-fn
                                                 storm-active-atom topology-context
@@ -237,7 +237,7 @@
 
 (defn- fail-spout-msg [^ISpout spout storm-conf msg-id tuple-info time-delta task-stats]
   (log-message "Failing message " msg-id ": " tuple-info)
-  (.fail spout msg-id)
+  (.fail spout msg-id) ;;xiaokang call user spout.fail(msg-id)
   (when time-delta
     (stats/spout-failed-tuple! task-stats (:stream tuple-info) time-delta)
     ))
@@ -245,7 +245,7 @@
 (defn- ack-spout-msg [^ISpout spout storm-conf msg-id tuple-info time-delta task-stats]
   (when (= true (storm-conf TOPOLOGY-DEBUG))
     (log-message "Acking message " msg-id))
-  (.ack spout msg-id)
+  (.ack spout msg-id) ;;xiaokang call user spout.ack(msg-id)
   (when time-delta
     (stats/spout-acked-tuple! task-stats (:stream tuple-info) time-delta)
     ))
@@ -261,7 +261,7 @@
         event-queue (ConcurrentLinkedQueue.)
         sampler (mk-stats-sampler storm-conf)
         
-        pending (TimeCacheMap.
+        pending (TimeCacheMap. ;;xiaokang pending msg, expire after 30s and then call fail-spout-msg
                  (int (storm-conf TOPOLOGY-MESSAGE-TIMEOUT-SECS))
                  (reify TimeCacheMap$ExpiredCallback
                    (expire [this msg-id [spout-id tuple-info start-time-ms]]
@@ -272,9 +272,9 @@
                          (let [out-tasks (if out-task-id
                                            (tasks-fn out-stream-id values out-task-id)
                                            (tasks-fn out-stream-id values))
-                               root-id (MessageId/generateId)
+                               root-id (MessageId/generateId) ;;xiaokang internal id for this output msg
                                rooted? (and message-id (> (storm-conf TOPOLOGY-ACKERS) 0))
-                               out-ids (dofor [t out-tasks] (MessageId/generateId))
+                               out-ids (dofor [t out-tasks] (MessageId/generateId)) ;;xiaokang internal id for each msg as input of downstream tasks
                                out-tuples (dofor [id out-ids]
                                             (let [tuple-id (if rooted?
                                                              (MessageId/makeRootId root-id id)
@@ -285,16 +285,16 @@
                                                       out-stream-id
                                                       tuple-id)))]
                            (dorun
-                            (map transfer-fn out-tasks out-tuples))
+                            (map transfer-fn out-tasks out-tuples)) ;;xiaokang add tupels to local worker's send buffer queue
                            (if rooted?
                              (do
                                (.put pending root-id [message-id
                                                       {:stream out-stream-id :values values}
-                                                      (if (sampler) (System/currentTimeMillis))])
+                                                      (if (sampler) (System/currentTimeMillis))]) ;;xiaokang put to ack pending queue
                                (send-unanchored topology-context tasks-fn transfer-fn
                                                 ACKER-INIT-STREAM-ID
-                                                [root-id (bit-xor-vals out-ids) task-id]))
-                             (when message-id
+                                                [root-id (bit-xor-vals out-ids) task-id])) ;;xiaokang send acker [msg-id bit-xor this-task-id]
+                             (when message-id ;;xiaokang no acker, ack this message-id now
                                (.add event-queue #(ack-spout-msg spout storm-conf message-id {:stream out-stream-id :values values} nil task-stats))))
                            (or out-tasks [])
                            ))
@@ -307,11 +307,11 @@
                              (send-spout-msg stream-id tuple message-id out-task-id)
                              ))]
     (log-message "Opening spout " component-id ":" task-id)
-    (.open spout storm-conf user-context (SpoutOutputCollector. output-collector))
+    (.open spout storm-conf user-context (SpoutOutputCollector. output-collector)) ;;xiakang open user spout
     (log-message "Opened spout " component-id ":" task-id)
-    [(fn []
+    [(fn [] ;;xiaokang how this tow fn invoked?
        ;; This design requires that spouts be non-blocking
-       (loop []
+       (loop [] ;;xiaokang execute fail/ack event
          (when-let [event (.poll event-queue)]
            (event)
            (recur)
@@ -319,8 +319,8 @@
        (if (or (not max-spout-pending)
                (< (.size pending) max-spout-pending))
          (if (wait-fn)
-           (.nextTuple spout)
-           (Time/sleep 100))
+           (.nextTuple spout) ;;xiaokang call user spout.nextTuple()
+           (Time/sleep 100)) ;;xiaokang wait if storm not active
          ;; TODO: log that it's getting throttled
          ))
      (fn []
@@ -334,9 +334,9 @@
              (when spout-id
                (condp = (.getSourceStreamId tuple)
                  ACKER-ACK-STREAM-ID (.add event-queue #(ack-spout-msg spout storm-conf spout-id
-                                                                       tuple-finished-info time-delta task-stats))
+                                                                       tuple-finished-info time-delta task-stats)) ;;xiaokang call ack
                  ACKER-FAIL-STREAM-ID (.add event-queue #(fail-spout-msg spout storm-conf spout-id
-                                                                         tuple-finished-info time-delta task-stats))
+                                                                         tuple-finished-info time-delta task-stats)) ;;xiaokang call fail
                  )))
            ;; TODO: on failure, emit tuple to failure stream
            )))
@@ -371,15 +371,15 @@
                               :let [anchors-to-ids (HashMap.)]]
                         (doseq [^Tuple a anchors
                                 :let [edge-id (MessageId/generateId)]]
-                          (put-xor! pending-acks a edge-id)
+                          (put-xor! pending-acks a edge-id) ;;xiaokang for local ack
                           (doseq [root-id (-> a .getMessageId .getAnchorsToIds .keySet)]
-                            (put-xor! anchors-to-ids root-id edge-id)))
+                            (put-xor! anchors-to-ids root-id edge-id))) ;;xiaokang for downstream bolt get root-id, ack
                         (transfer-fn t
                                      (Tuple. topology-context
                                              values
                                              task-id
                                              stream
-                                             (MessageId/makeId anchors-to-ids))))
+                                             (MessageId/makeId anchors-to-ids)))) ;;xiaokang root-id -> current-msg-id
                       (or out-tasks [])))
         output-collector (reify IOutputCollector
                            (emit [this stream anchors values]
@@ -389,8 +389,8 @@
                            (^void ack [this ^Tuple tuple]
                              (let [ack-val (or (.remove pending-acks tuple) (long 0))]
                                (doseq [[root id] (.. tuple getMessageId getAnchorsToIds)]
-                                 (send-unanchored topology-context tasks-fn transfer-fn
-                                                  ACKER-ACK-STREAM-ID [root (bit-xor id ack-val)])
+                                 (send-unanchored topology-context tasks-fn transfer-fn ;;xiaokang send ack msg
+                                                  ACKER-ACK-STREAM-ID [root (bit-xor id ack-val)]) ;;xiaokang id for remove anchor, ack-val for create new
                                  ))
                              (let [delta (tuple-time-delta! tuple-start-times tuple)]
                                (when delta

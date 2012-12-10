@@ -11,7 +11,7 @@
                 var-get)]
     (apply afn args)))
 
-(defn launch-virtual-port! [local? context port & args]
+(defn launch-virtual-port! [local? context port & args] ;;xiaokang bind to local/tcp port
   (require '[zilch.virtual-port :as mqvp])
   (require '[backtype.storm.messaging.zmq :as zmq])
   (let [afn (-> 'zilch.virtual-port/launch-virtual-port!

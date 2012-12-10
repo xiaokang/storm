@@ -90,12 +90,12 @@
 
 (defn send
   ([^ZMQ$Socket socket ^bytes message flags]
-     (.send socket message flags))
+     (.send socket message flags)) ;;xiaokang java: public native boolean send (byte [] msg, int flags);
   ([^ZMQ$Socket socket ^bytes message]
      (send socket message ZMQ/NOBLOCK)))
 
 (defn recv
   ([^ZMQ$Socket socket flags]
-     (.recv socket flags))
+     (.recv socket flags)) ;;xiaokang java: public native byte [] recv (int flags);
   ([^ZMQ$Socket socket]
      (recv socket 0)))
