@@ -35,7 +35,7 @@
       (^void execute [this ^Tuple tuple]
              (let [id (.getValue tuple 0)
                    ^TimeCacheMap pending @pending
-                   curr (.get pending id) ;;xiaokang {:spout-task, :val, :failed}
+                   curr (.get pending id)
                    curr (condp = (.getSourceStreamId tuple)
                             ACKER-INIT-STREAM-ID (-> curr
                                                      (update-ack (.getValue tuple 1))
@@ -45,18 +45,18 @@
                (.put pending id curr)
                (when (and curr
                           (:spout-task curr))
-                 (cond (= 0 (:val curr)) ;;xiaokang tuple fully processed
+                 (cond (= 0 (:val curr))
                        (do
                          (.remove pending id)
-                         (acker-emit-direct @output-collector ;;xiaokang emitDirect ack msg-id to source spout task
+                         (acker-emit-direct @output-collector
                                             (:spout-task curr)
                                             ACKER-ACK-STREAM-ID
                                             [id]
                                             ))
-                       (:failed curr) ;;xiaokang tuple failed
+                       (:failed curr)
                        (do
                          (.remove pending id)
-                         (acker-emit-direct @output-collector ;;xiaokang emitDirect fail msg-id to source spout task
+                         (acker-emit-direct @output-collector
                                             (:spout-task curr)
                                             ACKER-FAIL-STREAM-ID
                                             [id]

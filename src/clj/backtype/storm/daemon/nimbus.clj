@@ -412,7 +412,7 @@
 
 ;; public so it can be mocked out
 (defn compute-new-task->node+port [conf storm-id existing-assignment storm-cluster-state callback task-heartbeats-cache scratch?]
-  (let [available-slots (available-slots conf storm-cluster-state callback)        ;;xiaokang [host port host port]
+  (let [available-slots (available-slots conf storm-cluster-state callback)        
         storm-conf (read-storm-conf conf storm-id)
         all-task-ids (set (.task-ids storm-cluster-state storm-id))
 
@@ -433,9 +433,9 @@
         
         freed-slots (keys (apply dissoc alive-assigned (keys keep-assigned)))
         reassign-slots (take (- total-slots-to-use (count keep-assigned))
-                             (sort-slots (concat available-slots freed-slots))) ;;xiaokang shuffle to [n1 p1] [n2 p1] [n1 p2] [n2 p2]
+                             (sort-slots (concat available-slots freed-slots)))
         reassign-ids (sort (set/difference all-task-ids (set (apply concat (vals keep-assigned)))))
-        reassignment (into {} ;;xiaokang make taskid -> [node port] map, round-robin on reassign-slots
+        reassignment (into {}
                            (map vector
                                 reassign-ids
                                 ;; for some reason it goes into infinite loop without limiting the repeat-seq
@@ -466,7 +466,7 @@
   (log-debug "Determining assignment for " storm-id)
   (let [conf (:conf nimbus)
         storm-cluster-state (:storm-cluster-state nimbus)
-        callback (fn [& ignored] (transition! nimbus storm-id :monitor)) ;;xiaokang
+        callback (fn [& ignored] (transition! nimbus storm-id :monitor))
         node->host (get-node->host storm-cluster-state callback)
 
         existing-assignment (.assignment-info storm-cluster-state storm-id nil)
@@ -497,7 +497,7 @@
       (log-debug "Assignment for " storm-id " hasn't changed")
       (do
         (log-message "Setting new assignment for storm id " storm-id ": " (pr-str assignment))
-        (.set-assignment! storm-cluster-state storm-id assignment) ;;xiaokang zk.set /assignments Assignment
+        (.set-assignment! storm-cluster-state storm-id assignment)
         ))
     ))
 
@@ -659,16 +659,16 @@
                          (optimize-topology topology)
                          topology)
               storm-cluster-state (:storm-cluster-state nimbus)]
-          (system-topology! total-storm-conf topology) ;; this validates the structure of the topology ;;add acker to topology
+          (system-topology! total-storm-conf topology) ;; this validates the structure of the topology
           (log-message "Received topology submission for " storm-name " with conf " storm-conf)
           ;; lock protects against multiple topologies being submitted at once and
           ;; cleanup thread killing topology in b/w assignment and starting the topology
           (locking (:submit-lock nimbus)
             (setup-storm-code conf storm-id uploadedJarLocation storm-conf topology)
-            (.setup-heartbeats! storm-cluster-state storm-id) ;;xiaokang zk.mkdir /taskbeats/storm-id
-            (setup-storm-static conf storm-id storm-cluster-state) ;;xiaokang assign an id to each task, zk.set /tasks/storm-id/task-id component-id
-            (mk-assignments nimbus storm-id) ;;xiaokang assign all task to all available slots
-            (start-storm storm-name storm-cluster-state storm-id)) ;;xiaokang zk.set /storms/storm-id StormBase(:active)
+            (.setup-heartbeats! storm-cluster-state storm-id)
+            (setup-storm-static conf storm-id storm-cluster-state)
+            (mk-assignments nimbus storm-id)
+            (start-storm storm-name storm-cluster-state storm-id))
           ))
       
       (^void killTopology [this ^String name]

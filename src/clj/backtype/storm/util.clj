@@ -88,7 +88,7 @@
 (defn normalize-path [^String path]
   (toks->path (tokenize-path path)))
 
-(defn map-val [afn amap] ;;xiaokang {k v} -> {k (afn v)}
+(defn map-val [afn amap]
   (into {}
     (for [[k v] amap]
       [k (afn v)]
@@ -451,7 +451,7 @@
      )))
 
 ; this can be rewritten to be tail recursive
-(defn interleave-all [& colls] ;;xiaokang [1 2 3] [4 5 6] -> (1 4 2 5 3 6)
+(defn interleave-all [& colls]
   (if (empty? colls)
     []
     (let [colls (filter (complement empty?) colls)

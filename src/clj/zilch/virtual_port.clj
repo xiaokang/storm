@@ -23,9 +23,9 @@
     ))
 
 (defn virtual-url [port]
-  (str "inproc://" port)) ;;xiaokang localhost in-process url
+  (str "inproc://" port))
 
-(defn- get-virtual-socket! [context mapping-atom port] ;;xiaokang mapping port -> local port connected PUSH socket
+(defn- get-virtual-socket! [context mapping-atom port]
   (when-not (contains? @mapping-atom port)
     (log-message "Connecting to virtual port " port)
     (swap! mapping-atom
@@ -41,7 +41,7 @@
   (reset! mapping-atom {}))
 
 (defn virtual-send
-  ([^ZMQ$Socket socket virtual-port ^bytes message flags] ;; send packet(local port + msg) to remote socket
+  ([^ZMQ$Socket socket virtual-port ^bytes message flags]
      (mq/send socket (mk-packet virtual-port message) flags))
   ([^ZMQ$Socket socket virtual-port ^bytes message]
      (virtual-send socket virtual-port message ZMQ/NOBLOCK)))
@@ -50,11 +50,11 @@
   [context url :daemon true
                :kill-fn (fn [t] (System/exit 1))
                :priority Thread/NORM_PRIORITY
-               :valid-ports nil] ;;xiaokang bind to url, parse received packet to [local-port msg] and send msg to in-process local-port
+               :valid-ports nil]
   (let [valid-ports (set (map short valid-ports))
         vthread (async-loop
                   (fn [^ZMQ$Socket socket virtual-mapping]
-                        (let [[port msg] (parse-packet (mq/recv socket))] ;;xiaokang auto block here
+                        (let [[port msg] (parse-packet (mq/recv socket))]
                           (if (= port -1)
                             (do
                               (log-message "Virtual port " url " received shutdown notice")
@@ -65,11 +65,11 @@
                               (let [^ZMQ$Socket virtual-socket (get-virtual-socket! context virtual-mapping port)]
                                 ;; TODO: probably need to handle multi-part messages here or something
                                 (mq/send virtual-socket msg)
-                                0 ;;xiaokang no need to sleep since auto block on mq/recv
+                                0
                                 )
                               (log-message "Received invalid message directed at port " port ". Dropping...")
                               ))))
-                  :args-fn (fn [] [(-> context (mq/socket mq/pull) (mq/bind url)) (atom {})]) ;;xiaokang bind to url to recive packet from other hosts
+                  :args-fn (fn [] [(-> context (mq/socket mq/pull) (mq/bind url)) (atom {})])
                   :daemon daemon
                   :kill-fn kill-fn
                   :priority priority)]
@@ -86,11 +86,11 @@
         ))))
 
 (defn virtual-bind
-  [^ZMQ$Socket socket virtual-port] ;; xiaokang: bind to local in-process port
+  [^ZMQ$Socket socket virtual-port]
   (mq/bind socket (virtual-url virtual-port))
   )
 
 (defn virtual-connect
-  [^ZMQ$Socket socket virtual-port] ;; xiaokang: connect to local in-process port
+  [^ZMQ$Socket socket virtual-port]
   (mq/connect socket (virtual-url virtual-port))
   )

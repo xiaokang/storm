@@ -42,7 +42,7 @@
         components (mapcat
                      (fn [task-id]
                        (let [context (mk-topology-context task-id)]
-                         (->> (.getThisTargets context) ;;xiaokang {streamid -> {component-id -> grouping}}
+                         (->> (.getThisTargets context)
                               vals
                               (map keys)
                               (apply concat))
@@ -55,7 +55,7 @@
 
 (defn mk-transfer-fn [storm-conf context transfer-queue]
   (let [^KryoTupleSerializer serializer (KryoTupleSerializer. storm-conf context)]
-    (fn [task ^Tuple tuple] ;;xiaokang put [task tuple] to queue
+    (fn [task ^Tuple tuple]
       (.put ^LinkedBlockingQueue transfer-queue [task (.serialize serializer tuple)])
       )))
 
@@ -68,17 +68,17 @@
   (log-message "Launching worker for " storm-id " on " supervisor-id ":" port " with id " worker-id
                " and conf " conf)
   (if-not (local-mode? conf)
-    (redirect-stdio-to-log4j!)) ;;xiaokang how to redirect
+    (redirect-stdio-to-log4j!))
   (let [active (atom true)
         storm-active-atom (atom false)
         cluster-state (cluster/mk-distributed-cluster-state conf)
         storm-cluster-state (cluster/mk-storm-cluster-state cluster-state)
-        task-ids (read-worker-task-ids storm-cluster-state storm-id supervisor-id port) ;;xiaokang read task-ids for this host+port from zk assignment
+        task-ids (read-worker-task-ids storm-cluster-state storm-id supervisor-id port)
         ;; because in local mode, its not a separate
         ;; process. supervisor will register it in this case
         _ (when (= :distributed (cluster-mode conf))
-            (touch (worker-pid-path conf worker-id (process-pid)))) ;;xiaokang just touch a worker-dir/$pid file
-        heartbeat-fn #(do-heartbeat conf worker-id port storm-id task-ids) ;;xiaokang write to local file contains timestamp
+            (touch (worker-pid-path conf worker-id (process-pid))))
+        heartbeat-fn #(do-heartbeat conf worker-id port storm-id task-ids)
         ;; do this here so that the worker process dies if this fails
         ;; it's important that worker heartbeat to supervisor ASAP when launching so that the supervisor knows it's running (and can move on)
         _ (heartbeat-fn)
@@ -106,19 +106,19 @@
                      (msg-loader/mk-zmq-context (storm-conf ZMQ-THREADS)
                                                 (storm-conf ZMQ-LINGER-MILLIS)
                                                 (= (conf STORM-CLUSTER-MODE) "local")))
-        outbound-tasks (worker-outbound-tasks task->component mk-topology-context task-ids) ;;xiaokang down stream task-ids
+        outbound-tasks (worker-outbound-tasks task->component mk-topology-context task-ids)
         endpoint-socket-lock (mk-rw-lock)
-        node+port->socket (atom {}) ;;xiaokang connect remote socket
-        task->node+port (atom {}) ;;xiaokang local task
+        node+port->socket (atom {})
+        task->node+port (atom {})
 
         transfer-queue (LinkedBlockingQueue.) ; possibly bound the size of it
         
-        transfer-fn (mk-transfer-fn storm-conf (mk-topology-context nil) transfer-queue) ;;xiaokang just add [task queue] to queue
-        refresh-connections (fn this ;;xiaokang what is 'this'
+        transfer-fn (mk-transfer-fn storm-conf (mk-topology-context nil) transfer-queue)
+        refresh-connections (fn this
                               ([]
                                 (this (fn [& ignored] (.add event-manager this))))
                               ([callback]
-                                (let [assignment (.assignment-info storm-cluster-state storm-id callback) ;;xiaokang what
+                                (let [assignment (.assignment-info storm-cluster-state storm-id callback)
                                       my-assignment (select-keys (:task->node+port assignment) outbound-tasks)
                                       needed-connections (set (vals my-assignment))
                                       current-connections (set (keys @node+port->socket))
@@ -176,7 +176,7 @@
                     (.add event-manager refresh-storm-active)
                     (when @active (storm-conf TASK-REFRESH-POLL-SECS))
                     ))
-                 (async-loop ;;xiaokang thread that deliver local task output msg to downstream tasks
+                 (async-loop
                   (fn [^ArrayList drainer]
                     (let [felem (.take transfer-queue)]
                       (.add drainer felem)
@@ -186,7 +186,7 @@
                             task->node+port @task->node+port]
                         (doseq [[task ser-tuple] drainer]
                           (let [socket (node+port->socket (task->node+port task))]
-                            (msg/send socket task ser-tuple) ;;xiaokang real send msg
+                            (msg/send socket task ser-tuple)
                             ))
                         ))
                     (.clear drainer)
