@@ -16,7 +16,7 @@
   (:gen-class))
 
 (defn log-page [file tail lines]
-  (let [path (str (System/getProperty "storm.log.dir") "/" file)
+  (let [path (str (System/getProperty "storm.home") "/logs/" file)
         flen (.length (clojure.java.io/file path))
         nline (if lines (min 10000 (Integer/parseInt lines)) 500)
         skip (- flen (if tail (min 10485760 (Integer/parseInt tail)) 4096))]
