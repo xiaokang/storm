@@ -280,7 +280,10 @@ public class Config extends HashMap<String, Object> {
      */
     public static String SUPERVISOR_SLOTS_PORTS = "supervisor.slots.ports";
 
-
+    /**
+     * supervisor http ui port
+     */
+    public static String SUPERVISOR_UI_PORT = "supervisor.ui.port";
 
     /**
      * This parameter is used by the storm-deploy project to configure the
